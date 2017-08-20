@@ -21,10 +21,15 @@ class AlphaVantageStockAPI(object):
         TIME_SERIES_WEEKLY = 3
         TIME_SERIES_MONTHLY = 4
 
+    class OutputSize(enum.Enum):
+        COMPACT = 0
+        FULL = 1
+
     @classmethod
-    def get_historical_quotes(cls, symbol, time_series_type):
+    def get_historical_quotes(cls, symbol, time_series_type, output_size):
         params = dict(
             function=time_series_type.name,
+            outputsize=output_size.name.lower(),
             symbol=symbol,
             apikey=APP_CONFIG["ALPHAVANTAGE_API_KEY"])
         response = requests.get(url=cls.QUOTES_URL,
@@ -61,7 +66,7 @@ class GoogleFinanceAPI(object):
 
     API_TIMEOUT = 10
     HISTORIAL_QUOTES_URL = "https://www.google.com/finance/historical"
-    LATEST_QUOTES_URL = "http://finance.google.com/finance/info?client=ig&q="
+    LATEST_QUOTES_URL = "http://finance.google.com/finance/info"
     LATEST_QUOTE_FIELDS = dict(
         id="Id",
         t="Stock Symbol",
@@ -93,17 +98,17 @@ class GoogleFinanceAPI(object):
                                 params=params,
                                 timeout=cls.API_TIMEOUT)
         if response.status_code == 200:
-            return cls._get_quotes_by_date(response.text)
+            return cls._get_quotes_by_symbol(response.text)
         else:
             raise Exception("Quotes API returned status code: {}".format(response.status_code))
 
     @classmethod
     def get_historical_quotes(cls, symbol, start_date, end_date):
         params = dict(
+            q=symbol,
             startdate=start_date,
             enddate=end_date,
-            output="csv",
-            q=symbol)
+            output="csv")
         response = requests.get(url=cls.HISTORIAL_QUOTES_URL,
                                 params=params,
                                 timeout=cls.API_TIMEOUT)
@@ -141,6 +146,8 @@ class GoogleFinanceAPI(object):
         for quote in response:
             reformatted_quote = {}
             for key, value in quote.items():
+                if key not in cls.LATEST_QUOTE_FIELDS:
+                    continue
                 reformatted_quote[cls.LATEST_QUOTE_FIELDS[key]] = value
             quotes_by_symbol[quote["t"]] = reformatted_quote
 
@@ -153,7 +160,7 @@ class YahooFinanceAPI(object):
 
     API_TIMEOUT = 10
     QUOTES_URL = "http://download.finance.yahoo.com/d/quotes.csv"
-    WORKING_FIELDS = "sd1l1yrghm3m4ve"
+    USED_FIELDS = "sd1l1yrghm3m4vee7e8e9j1"
     QUOTES_FIELDS = dict(
         d="dividend/share",
         e="earnings/share",
@@ -187,7 +194,7 @@ class YahooFinanceAPI(object):
     def get_latest_quotes(cls, symbols):
         params = dict(
             s='+'.join(symbols),
-            f=cls.WORKING_FIELDS)
+            f=cls.USED_FIELDS)
         response = requests.get(url=cls.QUOTES_URL,
                                 params=params,
                                 timeout=cls.API_TIMEOUT)
@@ -208,7 +215,8 @@ class YahooFinanceAPI(object):
                 continue
 
             symbol, date, last_trade, dividend_yield, pe_ratio, low, high, moving_average_50, \
-            moving_average_200, volume, earnings_per_share = quote.split(',')
+            moving_average_200, volume, earnings_per_share, eps_curr_year, eps_next_year, \
+            eps_next_quarter, market_cap = quote.split(',')
             data_by_symbol[symbol] = dict(
                 date=date,
                 last_trade=last_trade,
@@ -219,7 +227,11 @@ class YahooFinanceAPI(object):
                 moving_average_50=moving_average_50,
                 moving_average_200=moving_average_200,
                 volume=volume,
-                earnings_per_share=earnings_per_share
+                earnings_per_share=earnings_per_share,
+                eps_curr_year=eps_curr_year,
+                eps_next_year=eps_next_year,
+                eps_next_quarter=eps_next_quarter,
+                market_cap=market_cap
             )
 
         return data_by_symbol
