@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class Analyzer(object):
 
     MIN_HOLD_DAYS = 7
-    GAIN_PERCENT_TARGET = 0.1
-    LOSS_PERCENT_FLOOR = 0.1
+    GAIN_PERCENT_TARGET = 0.2
+    LOSS_PERCENT_FLOOR = 0.08
 
     @classmethod
     def analyze(cls, symbols, start_date=None):
@@ -42,9 +42,6 @@ class Analyzer(object):
         lower/upper limit strategy. This "should" be similar to the average trend line but is
         also affected by volatility.
         """
-
-        start_date = start_date or datetime.datetime.today()
-
         num_wins = 0
         num_losses = 0
         days_til_loss = []
@@ -139,39 +136,40 @@ class Analyzer(object):
 
 
 if __name__ == "__main__":
-    results = Analyzer.analyze(
-        symbols=("S", "TMUS"),
-        start_date=datetime.datetime.strptime("2016-8-20", "%Y-%m-%d"))
-    pprint.pprint(results)
+    for index, symbols in enumerate((("BABA", "AMZN"), ("VZA", "T"), ("NKE", "SNE"),
+                                     ("AAPL", "FB"), ("MSFT", "NVDA"), ("KO", "BAC"),
+                                     ("SHOP", "CHKDG"))):
+        results = Analyzer.analyze(symbols=symbols, start_date=datetime.datetime.strptime("2012-01-01", "%Y-%m-%d"))
+        pprint.pprint(results)
 
-    output_path = "/home/schimpf1/Desktop/stock_harvester_results.json"
-    with open(output_path, 'w') as out:
-        out.write(str(results))
-    print("\n\n Raw results were written to {}".format(output_path))
+        output_path = "/home/schimpf1/Desktop/stock_harvester_results_{}.json".format("+".join(symbols))
+        with open(output_path, 'w') as out:
+            out.write(str(results))
+        print("\n\n Raw results were written to {}".format(output_path))
 
-    chart = leather.Chart('AATR By Month/Year')
-    for symbol, result in results.items():
-        average_anyimte_trade_return_by_month = result["average_anyimte_trade_return_by_month"]
-        average_anyimte_trade_return_by_year = result["average_anyimte_trade_return_by_year"]
-        min_year = min(average_anyimte_trade_return_by_year)
+        chart = leather.Chart('AATR By Month/Year')
+        for symbol, result in results.items():
+            average_anyimte_trade_return_by_month = result["average_anyimte_trade_return_by_month"]
+            average_anyimte_trade_return_by_year = result["average_anyimte_trade_return_by_year"]
+            min_year = min(average_anyimte_trade_return_by_year)
 
-        month_line = []
-        for month in sorted(average_anyimte_trade_return_by_month):
-            aatr = average_anyimte_trade_return_by_month[month]
-            x = ((int(month.year) - int(min_year)) * 12) + int(month.month) - 1
-            y = float(aatr)
-            month_line.append((x, y))
-        chart.add_line(month_line, name="{} (Monthly)".format(symbol))
+            month_line = []
+            for month in sorted(average_anyimte_trade_return_by_month):
+                aatr = average_anyimte_trade_return_by_month[month]
+                x = ((int(month.year) - int(min_year)) * 12) + int(month.month) - 1
+                y = float(aatr)
+                month_line.append((x, y))
+            chart.add_line(month_line, name="{} (Monthly)".format(symbol))
 
-        year_line = []
-        for year in sorted(average_anyimte_trade_return_by_year):
-            aatr = average_anyimte_trade_return_by_year[year]
-            x = (int(year) - int(min_year)) * 12
-            y = float(aatr)
-            year_line.append((x, y))
-        year_line.append((year_line[-1][0] + 12, year_line[-1][1]))
-        chart.add_line(year_line, name="{} (Yearly)".format(symbol))
+            year_line = []
+            for year in sorted(average_anyimte_trade_return_by_year):
+                aatr = average_anyimte_trade_return_by_year[year]
+                x = (int(year) - int(min_year)) * 12
+                y = float(aatr)
+                year_line.append((x, y))
+            year_line.append((year_line[-1][0] + 12, year_line[-1][1]))
+            chart.add_line(year_line, name="{} (Yearly)".format(symbol))
 
-    chart_ouput_path = "/home/schimpf1/Desktop/stock_harvester_results.svg"
-    chart.to_svg(chart_ouput_path)
-    print("\nChart results were written to {}".format(chart_ouput_path))
+        chart_ouput_path = "/home/schimpf1/Desktop/stock_harvester_results_{}.svg".format("+".join(symbols))
+        chart.to_svg(chart_ouput_path)
+        print("\nChart results were written to {}".format(chart_ouput_path))
