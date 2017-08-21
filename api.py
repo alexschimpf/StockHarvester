@@ -3,6 +3,8 @@ import logging
 from app_config import APP_CONFIG
 import enum
 import json
+from datetime import datetime
+from collections import OrderedDict
 
 LOGGER = logging.getLogger("api")
 
@@ -45,14 +47,14 @@ class AlphaVantageStockAPI(object):
         if not response:
             raise Exception("Quotes response is empty!")
 
-        quotes_by_period = {}
+        quotes_by_period = OrderedDict()
         response = json.loads(response)
         possible_keys = [key for key in response.keys() if "time series" in key.lower()]
         if len(possible_keys) > 1:
             raise Exception("Couldn't determine correct time series key in: {}".format(",".join(possible_keys)))
         time_series_key = possible_keys[0]
         for period, quote in response[time_series_key].items():
-            quotes_by_period[period] = dict(
+            quotes_by_period[datetime.strptime(period, "%Y-%m-%d")] = dict(
                 open=quote["1. open"],
                 high=quote["2. high"],
                 low=quote["3. low"],
@@ -147,6 +149,7 @@ class GoogleFinanceAPI(object):
             reformatted_quote = {}
             for key, value in quote.items():
                 if key not in cls.LATEST_QUOTE_FIELDS:
+                    print(key)
                     continue
                 reformatted_quote[cls.LATEST_QUOTE_FIELDS[key]] = value
             quotes_by_symbol[quote["t"]] = reformatted_quote
