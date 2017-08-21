@@ -54,7 +54,7 @@ class AlphaVantageStockAPI(object):
             raise Exception("Couldn't determine correct time series key in: {}".format(",".join(possible_keys)))
         time_series_key = possible_keys[0]
         for period, quote in response[time_series_key].items():
-            quotes_by_period[datetime.strptime(period, "%Y-%m-%d")] = dict(
+            quotes_by_period[datetime.strptime(period[:10], "%Y-%m-%d")] = dict(
                 open=quote["1. open"],
                 high=quote["2. high"],
                 low=quote["3. low"],

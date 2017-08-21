@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class Analyzer(object):
 
     MIN_HOLD_DAYS = 7
-    GAIN_PERCENT_TARGET = 0.2
+    GAIN_PERCENT_TARGET = 0.15
     LOSS_PERCENT_FLOOR = 0.08
 
     @classmethod
@@ -121,7 +121,7 @@ class Analyzer(object):
             if day >= cls.MIN_HOLD_DAYS:
                 if curr_price <= loss_price or curr_price >= gain_price:
                     return {
-                        "g/l": price_diff / start_price,
+                        "g/l": price_diff / (start_price or 1),
                         "days": day,
                         "buy_price": start_price,
                         "sell_price": curr_price
@@ -136,16 +136,11 @@ class Analyzer(object):
 
 
 if __name__ == "__main__":
-    for index, symbols in enumerate((("BABA", "AMZN"), ("VZA", "T"), ("NKE", "SNE"),
-                                     ("AAPL", "FB"), ("MSFT", "NVDA"), ("KO", "BAC"),
-                                     ("SHOP", "CHKDG"))):
+    for index, symbols in enumerate((("WB", "BAC", "SHOP", "CHKDG"),
+                                     ("FB", "AAPL", "BABA", "AMZN"),
+                                     ("JNJ", "JPM", "VSA", "PFE"))):
         results = Analyzer.analyze(symbols=symbols, start_date=datetime.datetime.strptime("2012-01-01", "%Y-%m-%d"))
         pprint.pprint(results)
-
-        output_path = "/home/schimpf1/Desktop/stock_harvester_results_{}.json".format("+".join(symbols))
-        with open(output_path, 'w') as out:
-            out.write(str(results))
-        print("\n\n Raw results were written to {}".format(output_path))
 
         chart = leather.Chart('AATR By Month/Year')
         for symbol, result in results.items():
@@ -161,14 +156,14 @@ if __name__ == "__main__":
                 month_line.append((x, y))
             chart.add_line(month_line, name="{} (Monthly)".format(symbol))
 
-            year_line = []
-            for year in sorted(average_anyimte_trade_return_by_year):
-                aatr = average_anyimte_trade_return_by_year[year]
-                x = (int(year) - int(min_year)) * 12
-                y = float(aatr)
-                year_line.append((x, y))
-            year_line.append((year_line[-1][0] + 12, year_line[-1][1]))
-            chart.add_line(year_line, name="{} (Yearly)".format(symbol))
+            # year_line = []
+            # for year in sorted(average_anyimte_trade_return_by_year):
+            #     aatr = average_anyimte_trade_return_by_year[year]
+            #     x = (int(year) - int(min_year)) * 12
+            #     y = float(aatr)
+            #     year_line.append((x, y))
+            # year_line.append((year_line[-1][0] + 12, year_line[-1][1]))
+            # chart.add_line(year_line, name="{} (Yearly)".format(symbol))
 
         chart_ouput_path = "/home/schimpf1/Desktop/stock_harvester_results_{}.svg".format("+".join(symbols))
         chart.to_svg(chart_ouput_path)
