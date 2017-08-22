@@ -8,17 +8,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class Analyzer(object):
 
     MIN_HOLD_DAYS = 7
-    GAIN_PERCENT_TARGET = 0.15
+    GAIN_PERCENT_TARGET = 0.2
     LOSS_PERCENT_FLOOR = 0.08
     MAX_WORKERS = 4
+    NUM_DAYS_AVERAGED = 50
 
     @classmethod
-    def analyze(cls, symbols, start_date=None):
+    def analyze(cls, symbols, start_date=None, num_days_averaged=None):
+        num_days_averaged = num_days_averaged or cls.NUM_DAYS_AVERAGED
+
         analysis_by_symbol = {}
         futures = []
         with ThreadPoolExecutor(max_workers=min(len(symbols), cls.MAX_WORKERS)) as executor:
             for symbol in symbols:
-                future = executor.submit(cls._analyze, symbol, start_date)
+                future = executor.submit(cls._analyze, symbol, start_date, num_days_averaged)
                 futures.append(future)
             for future in as_completed(futures):
                 analysis = future.result()
@@ -26,7 +29,7 @@ class Analyzer(object):
         return analysis_by_symbol
 
     @classmethod
-    def _analyze(cls, symbol, start_date):
+    def _analyze(cls, symbol, start_date, num_days_averaged):
         """
         Say you buy a stock at price P.
         After holding the stock for M days, stop and sell if:
@@ -58,81 +61,48 @@ class Analyzer(object):
                 continue
 
             results = cls._get_results(buy_date=date, historical_quotes=historical_quotes)
-            is_win = results["g/l"]
             num_hold_days = results["days"]
-            if is_win:
+            if results["g/l"] > 0:
                 total_wins += 1
                 results_by_date[date] = {
-                    "result": "w",
+                    "is_win": True,
                     "num_hold_days": num_hold_days
                 }
-            else:
+            elif results["g/l"] < 0:
                 total_losses += 1
                 results_by_date[date] = {
-                    "result": "l",
+                    "is_win": False,
                     "num_hold_days": num_hold_days
                 }
 
+        day = 0
+        period = 0
+        num_period_wins = 0
+        num_period_losses = 0
+        win_rate_by_period = {}
         for date, result in results_by_date.items():
-            pass
+            is_win = result["is_win"]
 
-        #
-        # num_wins = 0
-        # num_losses = 0
-        # days_til_loss = []
-        # days_til_gain = []
-        # average_returns = []
-        # average_returns_by_year = {}
-        # average_returns_by_month = {}
-        #
-        # for date in sorted(historical_quotes):
-        #     if start_date and date < start_date:
-        #         continue
-        #     if date + datetime.timedelta(days=cls.MIN_HOLD_DAYS) >= datetime.datetime.today():
-        #         continue
-        #
-        #     buy_info = cls._get_buy_info(buy_date=date, historical_quotes=historical_quotes)
-        #     try:
-        #         average_returns_by_year[date.year].append(buy_info["g/l"])
-        #     except KeyError:
-        #         average_returns_by_year[date.year] = [buy_info["g/l"]]
-        #     try:
-        #         average_returns_by_month["{}_{}".format(date.year, date.month)].append(buy_info["g/l"])
-        #     except KeyError:
-        #         average_returns_by_month["{}_{}".format(date.year, date.month)] = [buy_info["g/l"]]
-        #
-        #     if buy_info["g/l"] > 0:
-        #         days_til_gain.append(buy_info["days"])
-        #         num_wins += 1
-        #     elif buy_info["g/l"] < 0:
-        #         days_til_loss.append(buy_info["days"])
-        #         num_losses += 1
-        #     average_returns.append(buy_info["g/l"])
-        #
-        # aatr_by_month = {}
-        # for month, returns in average_returns_by_month.items():
-        #     aatr_by_month[datetime.datetime.strptime(month, "%Y_%m")] = sum(returns) / (len(returns) or 1)
-        #
-        # aatr_by_year = {}
-        # for year, returns in average_returns_by_year.items():
-        #     aatr_by_year[year] = sum(returns) / (len(returns) or 1)
-        #
-        # average_days_til_loss = sum(days_til_loss) / (len(days_til_loss) or 1)
-        # average_days_til_gain = sum(days_til_gain) / (len(days_til_gain) or 1)
-        # average_gain_loss = sum(average_returns) / (len(average_returns) or 1)
-        # win_chance = num_wins / (num_wins + num_losses)
-        # return dict(
-        #     symbol=symbol,
-        #     num_wins=num_wins,
-        #     num_losses=num_losses,
-        #     average_gain_loss=average_gain_loss,
-        #     average_days_til_gain=average_days_til_gain,
-        #     average_days_til_loss=average_days_til_loss,
-        #     win_chance=win_chance,
-        #     average_anyimte_trade_return_by_month=aatr_by_month,
-        #     average_anyimte_trade_return_by_year=aatr_by_year
-        # )
+            total_wins += (1 if is_win else 0)
+            num_period_wins += (1 if is_win else 0)
 
+            total_losses += (0 if is_win else 1)
+            num_period_losses += (0 if is_win else 1)
+
+            day = (day + 1) % num_days_averaged
+            if day == 0:
+                win_rate_by_period[period] = \
+                    num_period_wins / ((num_period_wins + num_period_losses) or 1)
+                num_period_wins = 0
+                num_period_losses = 0
+                period += 1
+
+        return dict(
+            symbol=symbol,
+            total_wins=total_wins,
+            total_losses=total_losses,
+            win_rate_by_period=win_rate_by_period
+        )
 
     @classmethod
     def _get_results(cls, buy_date, historical_quotes):
@@ -169,35 +139,24 @@ class Analyzer(object):
 
 
 if __name__ == "__main__":
-    for index, symbols in enumerate((("WB", "BAC", "SHOP", "CHKDG"),
-                                     ("FB", "AAPL", "BABA", "AMZN"),
-                                     ("JNJ", "JPM", "VSA", "PFE"))):
-        results = Analyzer.analyze(symbols=symbols, start_date=datetime.datetime.strptime("2012-01-01", "%Y-%m-%d"))
-        pprint.pprint(results)
+    analyzed_symbols = (
+        ("SHOP", "CHKDG", "NKE", "KO"),
+        ("FB", "AAPL", "BABA", "AMZN"),
+        ("JNJ", "JPM", "VSA", "PFE"),
+        ("GOOG", "FB", "VZA", "T")
+    )
+    for index, symbols in enumerate(analyzed_symbols):
+        all_results = Analyzer.analyze(
+            symbols=symbols, start_date=datetime.datetime.strptime("2000-01-01", "%Y-%m-%d"))
+        # pprint.pprint(all_results)
 
-        chart = leather.Chart('AATR By Month/Year')
-        for symbol, result in results.items():
-            average_anyimte_trade_return_by_month = result["average_anyimte_trade_return_by_month"]
-            average_anyimte_trade_return_by_year = result["average_anyimte_trade_return_by_year"]
-            min_year = min(average_anyimte_trade_return_by_year)
-
-            month_line = []
-            for month in sorted(average_anyimte_trade_return_by_month):
-                aatr = average_anyimte_trade_return_by_month[month]
-                x = ((int(month.year) - int(min_year)) * 12) + int(month.month) - 1
-                y = float(aatr)
-                month_line.append((x, y))
+        chart = leather.Chart('Win Rate By {}-Day Period'.format(Analyzer.NUM_DAYS_AVERAGED))
+        for symbol, results in all_results.items():
+            month_line = [
+                (period, results["win_rate_by_period"][period]) for period in sorted(results["win_rate_by_period"])]
             chart.add_line(month_line, name="{} (Monthly)".format(symbol))
 
-            # year_line = []
-            # for year in sorted(average_anyimte_trade_return_by_year):
-            #     aatr = average_anyimte_trade_return_by_year[year]
-            #     x = (int(year) - int(min_year)) * 12
-            #     y = float(aatr)
-            #     year_line.append((x, y))
-            # year_line.append((year_line[-1][0] + 12, year_line[-1][1]))
-            # chart.add_line(year_line, name="{} (Yearly)".format(symbol))
-
-        chart_ouput_path = "/home/schimpf1/Desktop/stock_harvester_results_{}.svg".format("+".join(symbols))
+        chart_ouput_path = \
+            "/home/schimpf1/Desktop/projects/StockHarvester/test/stock_harvester_results_{}.svg".format("+".join(symbols))
         chart.to_svg(chart_ouput_path)
         print("\nChart results were written to {}".format(chart_ouput_path))
